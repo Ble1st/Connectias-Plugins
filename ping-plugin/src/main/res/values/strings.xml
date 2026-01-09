@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Connectias Ping Plugin</string>
+    <string name="ping_host_label">Host oder IP-Adresse</string>
+    <string name="ping_host_hint">z.B. google.com oder 8.8.8.8</string>
+    <string name="ping_button">Ping starten</string>
+    <string name="ping_running">Ping läuft…</string>
+    <string name="ping_clear_history">Historie löschen</string>
+    <string name="ping_latest_result">Letztes Ergebnis</string>
+    <string name="ping_history">Ping-Historie</string>
+    <string name="ping_latency">Latenz: %1$dms</string>
+    <string name="ping_error_invalid_host">Ungültiger Host-Name oder IP-Adresse</string>
+    <string name="ping_error_empty_host">Bitte geben Sie einen Host ein</string>
+</resources>

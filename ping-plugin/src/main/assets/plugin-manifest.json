@@ -1,0 +1,15 @@
+{
+  "pluginId": "com.ble1st.connectias.pingplugin",
+  "pluginName": "Ping Plugin",
+  "version": "1.0.0",
+  "author": "Connectias Team",
+  "description": "Ein Netzwerk-Ping-Tool für das Connectias Plugin-System mit ICMP-Ping-Funktionalität",
+  "category": "NETWORK",
+  "fragmentClassName": "com.ble1st.connectias.pingplugin.PingPlugin",
+  "minApiLevel": 33,
+  "maxApiLevel": 36,
+  "minAppVersion": "1.0.0",
+  "permissions": [],
+  "nativeLibraries": [],
+  "dependencies": []
+}
