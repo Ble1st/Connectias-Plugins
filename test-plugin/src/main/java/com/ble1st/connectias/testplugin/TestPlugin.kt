@@ -27,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -216,16 +217,21 @@ class TestPlugin : Fragment(), IPlugin {
         
         coroutineScope.launch {
             try {
-                val request = Request.Builder()
-                    .url(url)
-                    .get()
-                    .build()
-                
-                val response = with(kotlinx.coroutines.Dispatchers.IO) {
+                // Perform HTTP request on IO dispatcher to avoid NetworkOnMainThreadException
+                val response = withContext(Dispatchers.IO) {
+                    val request = Request.Builder()
+                        .url(url)
+                        .get()
+                        .build()
+                    
                     httpClient.newCall(request).execute()
                 }
                 
-                val responseBody = response.body?.string() ?: ""
+                // Process response on IO dispatcher (reading body can be blocking)
+                val responseBody = withContext(Dispatchers.IO) {
+                    response.body?.string() ?: ""
+                }
+                
                 val statusCode = response.code
                 val statusMessage = response.message
                 val headers = response.headers.toString()
@@ -238,6 +244,7 @@ class TestPlugin : Fragment(), IPlugin {
                     appendLine(responseBody)
                 }
                 
+                // Update UI state (automatically on Main dispatcher since coroutineScope uses Main)
                 httpResult = result
                 httpError = null
                 pluginContext?.logInfo("TestPlugin: HTTP request successful - Status: $statusCode")
