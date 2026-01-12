@@ -1,0 +1,153 @@
+name: Release Single Plugin
+
+on:
+  workflow_call:
+    inputs:
+      plugin:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+      
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      
+      - name: Build ${{ inputs.plugin }} Release APK
+        run: ./gradlew :${{ inputs.plugin }}:assembleRelease --no-daemon
+      
+      - name: Find APK file
+        id: find-apk
+        run: |
+          APK_PATH=$(find ${{ inputs.plugin }}/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK file not found"
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
+      
+      - name: Generate SHA256 Checksum
+        id: checksum
+        run: |
+          SHA256=$(sha256sum "${{ steps.find-apk.outputs.apk_path }}" | cut -d' ' -f1)
+          echo "$SHA256  ${{ steps.find-apk.outputs.apk_name }}" > sha256sum.txt
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+          cat sha256sum.txt
+      
+      - name: Copy plugin manifest
+        run: |
+          if [ -f "${{ inputs.plugin }}/src/main/assets/plugin-manifest.json" ]; then
+            cp "${{ inputs.plugin }}/src/main/assets/plugin-manifest.json" plugin-manifest.json
+            echo "Plugin manifest copied"
+            cat plugin-manifest.json
+          else
+            echo "Warning: plugin-manifest.json not found for ${{ inputs.plugin }}"
+            echo "{}" > plugin-manifest.json
+          fi
+      
+      - name: Install jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq || echo "jq installation failed, will use fallback"
+      
+      - name: Extract plugin ID from manifest
+        id: plugin-id
+        run: |
+          if command -v jq &> /dev/null && [ -f "plugin-manifest.json" ]; then
+            PLUGIN_ID=$(jq -r '.pluginId // empty' plugin-manifest.json 2>/dev/null || echo "")
+            if [ -z "$PLUGIN_ID" ] || [ "$PLUGIN_ID" == "null" ]; then
+              PLUGIN_ID="${{ inputs.plugin }}"
+            fi
+          else
+            # Fallback: try to extract with grep/sed if jq not available
+            if [ -f "plugin-manifest.json" ]; then
+              PLUGIN_ID=$(grep -o '"pluginId"[[:space:]]*:[[:space:]]*"[^"]*"' plugin-manifest.json | sed 's/.*"pluginId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || echo "")
+              if [ -z "$PLUGIN_ID" ]; then
+                PLUGIN_ID="${{ inputs.plugin }}"
+              fi
+            else
+              PLUGIN_ID="${{ inputs.plugin }}"
+            fi
+          fi
+          echo "plugin_id=$PLUGIN_ID" >> $GITHUB_OUTPUT
+          echo "Plugin ID: $PLUGIN_ID"
+      
+      - name: Create release tag name
+        id: tag
+        run: |
+          # Tag format: v{version}-{plugin-name}
+          PLUGIN_NAME="${{ inputs.plugin }}"
+          TAG_NAME="v${{ inputs.version }}-${PLUGIN_NAME}"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Release tag: $TAG_NAME"
+      
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists, skipping tag creation"
+          else
+            git tag -a "$TAG_NAME" -m "Release ${{ inputs.plugin }} v${{ inputs.version }}"
+            git push origin "$TAG_NAME"
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ inputs.plugin }} v${{ inputs.version }}
+          body: |
+            # ${{ inputs.plugin }} v${{ inputs.version }}
+            
+            ## Plugin Information
+            - **Plugin ID:** ${{ steps.plugin-id.outputs.plugin_id }}
+            - **Version:** ${{ inputs.version }}
+            - **Build Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            ## Artifacts
+            - APK: `${{ steps.find-apk.outputs.apk_name }}`
+            - SHA256: `${{ steps.checksum.outputs.sha256 }}`
+            
+            ## Plugin Manifest
+            ```json
+            $(cat plugin-manifest.json 2>/dev/null || echo '{}')
+            ```
+          files: |
+            ${{ steps.find-apk.outputs.apk_path }}
+            plugin-manifest.json
+            sha256sum.txt
+          draft: false
+          prerelease: false
+      
+      - name: Release summary
+        run: |
+          echo "✅ Successfully released ${{ inputs.plugin }} v${{ inputs.version }}"
+          echo "Tag: ${{ steps.tag.outputs.tag_name }}"
+          echo "Plugin ID: ${{ steps.plugin-id.outputs.plugin_id }}"

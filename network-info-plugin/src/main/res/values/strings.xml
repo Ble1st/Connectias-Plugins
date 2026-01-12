@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Connectias Network Info Plugin</string>
+    <string name="network_info_refresh">Aktualisieren</string>
+    <string name="network_info_refreshing">Aktualisiere…</string>
+    <string name="network_info_connection_status">Verbindungsstatus</string>
+    <string name="network_info_network_type">Netzwerktyp</string>
+    <string name="network_info_ip_addresses">IP-Adressen</string>
+    <string name="network_info_wifi_info">WiFi-Informationen</string>
+    <string name="network_info_network_details">Netzwerk-Details</string>
+    <string name="network_info_interfaces">Netzwerk-Interfaces</string>
+    <string name="network_info_connected">Verbunden</string>
+    <string name="network_info_disconnected">Nicht verbunden</string>
+    <string name="network_info_wifi">WiFi</string>
+    <string name="network_info_mobile">Mobile Daten</string>
+    <string name="network_info_ethernet">Ethernet</string>
+    <string name="network_info_unknown">Unbekannt</string>
+    <string name="network_info_no_wifi">WiFi nicht verfügbar</string>
+    <string name="network_info_ssid">SSID</string>
+    <string name="network_info_signal_strength">Signalstärke</string>
+    <string name="network_info_link_speed">Verbindungsgeschwindigkeit</string>
+    <string name="network_info_gateway">Gateway</string>
+    <string name="network_info_dns_servers">DNS-Server</string>
+    <string name="network_info_subnet_mask">Subnetz-Maske</string>
+    <string name="network_info_mac_address">MAC-Adresse</string>
+    <string name="network_info_interface_name">Interface</string>
+    <string name="network_info_not_available">Nicht verfügbar</string>
+</resources>

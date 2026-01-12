@@ -1,0 +1,283 @@
+name: Release Changed Plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for changed plugins (e.g., 1.0.0)'
+        required: true
+        type: string
+      force_all:
+        description: 'Force build all plugins (ignore changes)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ping-plugin: ${{ steps.changes.outputs.ping-plugin }}
+      test-plugin: ${{ steps.changes.outputs.test-plugin }}
+      network-info-plugin: ${{ steps.changes.outputs.network-info-plugin }}
+      changed-plugins: ${{ steps.changes.outputs.changed-plugins }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for change detection
+      
+      - name: Detect changed plugins
+        id: changes
+        run: |
+          # Get all plugin directories
+          PLUGINS=("ping-plugin" "test-plugin" "network-info-plugin")
+          CHANGED_PLUGINS=()
+          
+          # If force_all is true, mark all as changed
+          if [ "${{ github.event.inputs.force_all }}" == "true" ]; then
+            echo "Force build all plugins enabled"
+            for plugin in "${PLUGINS[@]}"; do
+              echo "${plugin}=true" >> $GITHUB_OUTPUT
+              CHANGED_PLUGINS+=("${plugin}")
+            done
+            echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check changes for each plugin
+          for plugin in "${PLUGINS[@]}"; do
+            PLUGIN_DIR="${plugin}"
+            
+            # Find latest tag for this specific plugin
+            # Tag format: v{version}-{plugin-name}
+            LATEST_PLUGIN_TAG=$(git tag -l "v*-${plugin}" | sort -V | tail -1)
+            
+            if [ -z "$LATEST_PLUGIN_TAG" ]; then
+              # No previous release for this plugin, mark as changed
+              echo "No previous release for ${plugin}, marking as changed"
+              echo "${plugin}=true" >> $GITHUB_OUTPUT
+              CHANGED_PLUGINS+=("${plugin}")
+            else
+              # Check if plugin directory or root build files changed since last tag
+              echo "Checking ${plugin} against tag ${LATEST_PLUGIN_TAG}"
+              
+              # Check for changes in:
+              # - Plugin directory (specific changes)
+              # - Root build.gradle.kts (affects all plugins)
+              # - settings.gradle.kts (affects all plugins)
+              # - gradle/ directory (affects all plugins)
+              # - gradle.properties (affects all plugins)
+              
+              # First check if plugin-specific files changed
+              PLUGIN_CHANGED=$(git diff --name-only ${LATEST_PLUGIN_TAG}..HEAD -- "${PLUGIN_DIR}/" || echo "")
+              
+              # Check if common build files changed (affect all plugins)
+              COMMON_CHANGED=$(git diff --name-only ${LATEST_PLUGIN_TAG}..HEAD -- \
+                "build.gradle.kts" \
+                "settings.gradle.kts" \
+                "gradle/" \
+                "gradle.properties" || echo "")
+              
+              if [ -n "$PLUGIN_CHANGED" ]; then
+                echo "Plugin-specific changes detected in ${plugin}:"
+                echo "$PLUGIN_CHANGED"
+                echo "${plugin}=true" >> $GITHUB_OUTPUT
+                CHANGED_PLUGINS+=("${plugin}")
+              elif [ -n "$COMMON_CHANGED" ]; then
+                echo "Common build files changed, rebuilding ${plugin}:"
+                echo "$COMMON_CHANGED"
+                echo "${plugin}=true" >> $GITHUB_OUTPUT
+                CHANGED_PLUGINS+=("${plugin}")
+              else
+                echo "No changes detected for ${plugin}"
+                echo "${plugin}=false" >> $GITHUB_OUTPUT
+              fi
+            fi
+          done
+          
+          if [ ${#CHANGED_PLUGINS[@]} -eq 0 ]; then
+            echo "No plugins changed, nothing to build"
+            echo "changed-plugins=" >> $GITHUB_OUTPUT
+          else
+            echo "Changed plugins: ${CHANGED_PLUGINS[*]}"
+            echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Show changed plugins
+        run: |
+          echo "Changed plugins: ${{ steps.changes.outputs.changed-plugins }}"
+          echo "ping-plugin: ${{ steps.changes.outputs.ping-plugin }}"
+          echo "test-plugin: ${{ steps.changes.outputs.test-plugin }}"
+          echo "network-info-plugin: ${{ steps.changes.outputs.network-info-plugin }}"
+
+  build-ping-plugin:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ping-plugin == 'true'
+    uses: ./.github/workflows/release-single-plugin.yml
+    with:
+      plugin: ping-plugin
+      version: ${{ github.event.inputs.version }}
+    secrets: inherit
+
+  build-test-plugin:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.test-plugin == 'true'
+    uses: ./.github/workflows/release-single-plugin.yml
+    with:
+      plugin: test-plugin
+      version: ${{ github.event.inputs.version }}
+    secrets: inherit
+
+  build-network-info-plugin:
+    needs: detect-changes
+    if: needs.detect-changes.outputs['network-info-plugin'] == 'true'
+    uses: ./.github/workflows/release-single-plugin.yml
+    with:
+      plugin: network-info-plugin
+      version: ${{ github.event.inputs.version }}
+    secrets: inherit
+
+  summary:
+    needs: [detect-changes, build-ping-plugin, build-test-plugin, build-network-info-plugin]
+    if: always() && needs.detect-changes.outputs.changed-plugins != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Changed Plugins:" >> $GITHUB_STEP_SUMMARY
+          echo "${{ needs.detect-changes.outputs.changed-plugins }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status:" >> $GITHUB_STEP_SUMMARY
+          echo "- ping-plugin: ${{ needs.build-ping-plugin.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- test-plugin: ${{ needs.build-test-plugin.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- network-info-plugin: ${{ needs.build-network-info-plugin.result }}" >> $GITHUB_STEP_SUMMARY
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+      
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      
+      - name: Build ${{ matrix.plugin }} Release APK
+        run: ./gradlew :${{ matrix.plugin }}:assembleRelease --no-daemon
+      
+      - name: Find APK file
+        id: find-apk
+        run: |
+          APK_PATH=$(find ${{ matrix.plugin }}/build/outputs/apk/release -name "*.apk" -type f | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK file not found"
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
+      
+      - name: Generate SHA256 Checksum
+        id: checksum
+        run: |
+          SHA256=$(sha256sum "${{ steps.find-apk.outputs.apk_path }}" | cut -d' ' -f1)
+          echo "$SHA256  $(basename ${{ steps.find-apk.outputs.apk_path }})" > sha256sum.txt
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+          cat sha256sum.txt
+      
+      - name: Copy plugin manifest
+        run: |
+          if [ -f "${{ matrix.plugin }}/src/main/assets/plugin-manifest.json" ]; then
+            cp "${{ matrix.plugin }}/src/main/assets/plugin-manifest.json" plugin-manifest.json
+            echo "Plugin manifest copied"
+            cat plugin-manifest.json
+          else
+            echo "Warning: plugin-manifest.json not found for ${{ matrix.plugin }}"
+            echo "{}" > plugin-manifest.json
+          fi
+      
+      - name: Extract plugin ID from manifest
+        id: plugin-id
+        run: |
+          if [ -f "plugin-manifest.json" ]; then
+            PLUGIN_ID=$(jq -r '.pluginId // empty' plugin-manifest.json || echo "")
+            if [ -z "$PLUGIN_ID" ] || [ "$PLUGIN_ID" == "null" ]; then
+              # Fallback: use directory name
+              PLUGIN_ID="${{ matrix.plugin }}"
+            fi
+          else
+            PLUGIN_ID="${{ matrix.plugin }}"
+          fi
+          echo "plugin_id=$PLUGIN_ID" >> $GITHUB_OUTPUT
+          echo "Plugin ID: $PLUGIN_ID"
+      
+      - name: Create release tag name
+        id: tag
+        run: |
+          # Convert plugin name to tag format: ping-plugin -> ping-plugin
+          PLUGIN_NAME="${{ matrix.plugin }}"
+          TAG_NAME="v${{ github.event.inputs.version }}-${PLUGIN_NAME}"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Release tag: $TAG_NAME"
+      
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG_NAME="${{ steps.tag.outputs.tag_name }}"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists, skipping tag creation"
+          else
+            git tag -a "$TAG_NAME" -m "Release ${{ matrix.plugin }} v${{ github.event.inputs.version }}"
+            git push origin "$TAG_NAME"
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ matrix.plugin }} v${{ github.event.inputs.version }}
+          body: |
+            # ${{ matrix.plugin }} v${{ github.event.inputs.version }}
+            
+            ## Plugin Information
+            - **Plugin ID:** ${{ steps.plugin-id.outputs.plugin_id }}
+            - **Version:** ${{ github.event.inputs.version }}
+            - **Build Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            ## Artifacts
+            - APK: `$(basename ${{ steps.find-apk.outputs.apk_path }})`
+            - SHA256: `${{ steps.checksum.outputs.sha256 }}`
+            
+            ## Plugin Manifest
+            ```json
+            $(cat plugin-manifest.json 2>/dev/null || echo '{}')
+            ```
+          files: |
+            ${{ steps.find-apk.outputs.apk_path }}
+            plugin-manifest.json
+            sha256sum.txt
+          draft: false
+          prerelease: false
+      
+      - name: Release summary
+        run: |
+          echo "✅ Successfully released ${{ matrix.plugin }} v${{ github.event.inputs.version }}"
+          echo "Tag: ${{ steps.tag.outputs.tag_name }}"
+          echo "Plugin ID: ${{ steps.plugin-id.outputs.plugin_id }}"
