@@ -36,6 +36,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       
+      - name: Validate plugin name
+        run: |
+          if [ -z "${{ inputs.plugin }}" ]; then
+            echo "Error: Plugin name is empty"
+            exit 1
+          fi
+          echo "Building plugin: ${{ inputs.plugin }}"
+      
       - name: Build ${{ inputs.plugin }} Release APK
         run: ./gradlew :${{ inputs.plugin }}:assembleRelease --no-daemon
       
