@@ -127,6 +127,20 @@ class TestPlugin : Fragment(), IPlugin {
         Timber.d("TestPlugin: onDestroy called")
         pluginContext?.logDebug("TestPlugin: Fragment destroyed")
     }
+    
+    // Override onPause to resolve conflict between Fragment and IPlugin
+    override fun onPause() {
+        super<Fragment>.onPause()
+        // IPlugin.onPause() is called automatically via default implementation
+        pluginContext?.logDebug("TestPlugin: onPause called")
+    }
+    
+    // Override onResume to resolve conflict between Fragment and IPlugin
+    override fun onResume() {
+        super<Fragment>.onResume()
+        // IPlugin.onResume() is called automatically via default implementation
+        pluginContext?.logDebug("TestPlugin: onResume called")
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

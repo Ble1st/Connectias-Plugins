@@ -133,6 +133,20 @@ class PingPlugin : Fragment(), IPlugin {
         pluginContext?.logDebug("PingPlugin: Fragment destroyed")
     }
     
+    // Override onPause to resolve conflict between Fragment and IPlugin
+    override fun onPause() {
+        super<Fragment>.onPause()
+        // IPlugin.onPause() is called automatically via default implementation
+        pluginContext?.logDebug("PingPlugin: onPause called")
+    }
+    
+    // Override onResume to resolve conflict between Fragment and IPlugin
+    override fun onResume() {
+        super<Fragment>.onResume()
+        // IPlugin.onResume() is called automatically via default implementation
+        pluginContext?.logDebug("PingPlugin: onResume called")
+    }
+    
     private fun performPing(host: String) {
         if (host.isBlank() || !PingService.isValidHost(host)) {
             pluginContext?.logWarning("Invalid host: $host")

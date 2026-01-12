@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "Connectias-Plugins"
 
 include(":ping-plugin")
+include(":test-plugin")
