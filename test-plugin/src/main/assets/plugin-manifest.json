@@ -9,7 +9,7 @@
   "minApiLevel": 33,
   "maxApiLevel": 36,
   "minAppVersion": "1.0.0",
-  "permissions": ["android.permission.INTERNET"],
+  "permissions": ["android.permission.INTERNET", "android.permission.CAMERA"],
   "nativeLibraries": [],
   "dependencies": []
 }

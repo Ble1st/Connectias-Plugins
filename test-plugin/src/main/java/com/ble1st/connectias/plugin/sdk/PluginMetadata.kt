@@ -1,9 +1,5 @@
 package com.ble1st.connectias.plugin.sdk
 
-/**
- * Plugin metadata
- * Must match the app's plugin SDK exactly
- */
 data class PluginMetadata(
     val pluginId: String,
     val pluginName: String,

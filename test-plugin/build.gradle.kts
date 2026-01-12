@@ -70,4 +70,10 @@ dependencies {
     
     // OkHttp for HTTP requests
     implementation(libs.okhttp)
+    
+    // CameraX for camera preview
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 }

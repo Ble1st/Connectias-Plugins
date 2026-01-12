@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.LifecycleOwner
 import androidx.fragment.app.Fragment
 import com.ble1st.connectias.plugin.sdk.IPlugin
 import com.ble1st.connectias.plugin.sdk.PluginCategory
@@ -28,9 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
+// Hardware Bridge APIs (v2.0) - No direct hardware imports needed
 
 /**
  * Test-Plugin für das Connectias Plugin-System
@@ -46,17 +46,14 @@ class TestPlugin : Fragment(), IPlugin {
     private var isPluginEnabled by mutableStateOf(false)
     
     // HTTP request state
-    private var urlInput by mutableStateOf("https://example.com")
+    private var urlInput by mutableStateOf("https://httpbin.org/get")
     private var httpResult by mutableStateOf<String?>(null)
     private var isLoading by mutableStateOf(false)
     private var httpError by mutableStateOf<String?>(null)
     
-    // HTTP client for curl-like requests
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+    // Camera state
+    private var cameraImageData by mutableStateOf<ByteArray?>(null)
+    private var cameraError by mutableStateOf<String?>(null)
     
     // Coroutine scope for async operations
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -106,7 +103,7 @@ class TestPlugin : Fragment(), IPlugin {
             nativeLibraries = emptyList(),
             fragmentClassName = "com.ble1st.connectias.testplugin.TestPlugin",
             description = "Ein Test-Plugin für das Connectias Plugin-System mit Compose UI",
-            permissions = listOf("android.permission.INTERNET"),
+            permissions = listOf("android.permission.INTERNET", "android.permission.CAMERA"),
             category = PluginCategory.UTILITY,
             dependencies = emptyList()
         )
@@ -178,7 +175,10 @@ class TestPlugin : Fragment(), IPlugin {
                         onCurlClick = { performHttpRequest() },
                         httpResult = httpResult,
                         isLoading = isLoading,
-                        httpError = httpError
+                        httpError = httpError,
+                        cameraImageData = cameraImageData,
+                        cameraError = cameraError,
+                        onCaptureImage = { captureImageViaBridge() }
                     )
                 }
             }
@@ -186,13 +186,20 @@ class TestPlugin : Fragment(), IPlugin {
     }
     
     /**
-     * Performs HTTP GET request (curl-like functionality)
+     * Performs HTTP GET request via Hardware Bridge (v2.0)
+     * Uses PluginContext.httpRequest() instead of direct OkHttp
      */
     private fun performHttpRequest() {
         if (urlInput.isBlank()) {
             httpError = "URL darf nicht leer sein"
             httpResult = null
             pluginContext?.logWarning("TestPlugin: HTTP request failed - empty URL")
+            return
+        }
+        
+        val context = pluginContext
+        if (context == null) {
+            httpError = "Plugin context not available"
             return
         }
         
@@ -206,56 +213,77 @@ class TestPlugin : Fragment(), IPlugin {
         } catch (e: Exception) {
             httpError = "Ungültige URL: ${e.message}"
             httpResult = null
-            pluginContext?.logError("TestPlugin: Invalid URL format", e)
+            context.logError("TestPlugin: Invalid URL format", e)
             return
         }
         
         isLoading = true
         httpError = null
         httpResult = null
-        pluginContext?.logInfo("TestPlugin: Starting HTTP request to $url")
+        context.logInfo("TestPlugin: Starting HTTP request via Hardware Bridge to $url")
         
         coroutineScope.launch {
             try {
-                // Perform HTTP request on IO dispatcher to avoid NetworkOnMainThreadException
-                val response = withContext(Dispatchers.IO) {
-                    val request = Request.Builder()
-                        .url(url)
-                        .get()
-                        .build()
-                    
-                    httpClient.newCall(request).execute()
+                // Use Hardware Bridge API (v2.0)
+                val result = context.httpRequest(url = url, method = "GET")
+                
+                result.onSuccess { responseBody ->
+                    httpResult = buildString {
+                        appendLine("=== Hardware Bridge Response ===")
+                        appendLine("URL: $url")
+                        appendLine("\nResponse Body:")
+                        appendLine(responseBody)
+                    }
+                    httpError = null
+                    context.logInfo("TestPlugin: HTTP request successful via Hardware Bridge")
+                }.onFailure { error ->
+                    val errorMessage = "Fehler: ${error.message ?: error.javaClass.simpleName}"
+                    httpError = errorMessage
+                    httpResult = null
+                    context.logError("TestPlugin: HTTP request failed", error)
                 }
-                
-                // Process response on IO dispatcher (reading body can be blocking)
-                val responseBody = withContext(Dispatchers.IO) {
-                    response.body?.string() ?: ""
-                }
-                
-                val statusCode = response.code
-                val statusMessage = response.message
-                val headers = response.headers.toString()
-                
-                val result = buildString {
-                    appendLine("Status: $statusCode $statusMessage")
-                    appendLine("\nHeaders:")
-                    appendLine(headers)
-                    appendLine("\nBody:")
-                    appendLine(responseBody)
-                }
-                
-                // Update UI state (automatically on Main dispatcher since coroutineScope uses Main)
-                httpResult = result
-                httpError = null
-                pluginContext?.logInfo("TestPlugin: HTTP request successful - Status: $statusCode")
                 
             } catch (e: Exception) {
                 val errorMessage = "Fehler: ${e.message ?: e.javaClass.simpleName}"
                 httpError = errorMessage
                 httpResult = null
-                pluginContext?.logError("TestPlugin: HTTP request failed", e)
+                context.logError("TestPlugin: HTTP request failed", e)
             } finally {
                 isLoading = false
+            }
+        }
+    }
+    
+    /**
+     * Captures image via Hardware Bridge (v2.0)
+     */
+    private fun captureImageViaBridge() {
+        val context = pluginContext
+        if (context == null) {
+            cameraError = "Plugin context not available"
+            return
+        }
+        
+        context.logInfo("TestPlugin: Starting image capture via Hardware Bridge")
+        cameraError = null
+        
+        coroutineScope.launch {
+            try {
+                val result = context.captureImage()
+                
+                result.onSuccess { imageData ->
+                    cameraImageData = imageData
+                    cameraError = null
+                    context.logInfo("TestPlugin: Image captured successfully (${imageData.size} bytes)")
+                }.onFailure { error ->
+                    cameraError = error.message ?: "Unknown error"
+                    cameraImageData = null
+                    context.logError("TestPlugin: Image capture failed", error)
+                }
+            } catch (e: Exception) {
+                cameraError = e.message ?: "Unknown error"
+                cameraImageData = null
+                context.logError("TestPlugin: Image capture failed", e)
             }
         }
     }
@@ -263,7 +291,7 @@ class TestPlugin : Fragment(), IPlugin {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         Timber.i("TestPlugin: View created successfully")
-        pluginContext?.logInfo("TestPlugin UI view created and ready")
+        pluginContext?.logInfo("TestPlugin UI view created and ready (Hardware Bridge v2.0)")
     }
 
     override fun onDestroy() {
@@ -316,7 +344,10 @@ fun TestPluginScreen(
     onCurlClick: () -> Unit,
     httpResult: String?,
     isLoading: Boolean,
-    httpError: String?
+    httpError: String?,
+    cameraImageData: ByteArray?,
+    cameraError: String?,
+    onCaptureImage: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -716,6 +747,83 @@ fun TestPluginScreen(
                 }
             }
 
+            // Camera Preview Card
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Kamera-Vorschau",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Button(
+                        onClick = onCaptureImage,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = "Capture",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Foto aufnehmen (Hardware Bridge)")
+                    }
+                    
+                    // Camera result display
+                    if (cameraImageData != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Bild erfasst: ${cameraImageData.size} bytes",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                    
+                    if (cameraError != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Fehler:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = cameraError,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Features Card
             Card(
                 modifier = Modifier.fillMaxWidth()
@@ -738,6 +846,7 @@ fun TestPluginScreen(
                     FeatureItem("✅ Database Logging")
                     FeatureItem("✅ Standalone APK")
                     FeatureItem("✅ HTTP Requests (Curl)")
+                    FeatureItem("✅ Kamera-Vorschau (Live)")
                 }
             }
         }
@@ -793,3 +902,5 @@ fun FeatureItem(text: String) {
         )
     }
 }
+
+// CameraX Preview removed - Hardware Bridge (v2.0) handles camera via IPC

@@ -3,7 +3,7 @@ package com.ble1st.connectias.plugin.sdk
 /**
  * Base interface that all Connectias plugins must implement
  * 
- * IMPORTANT: Method order must match the app's plugin SDK version to ensure binary compatibility.
+ * IMPORTANT: Method order must match the plugin SDK version to ensure binary compatibility.
  * Plugins are compiled against the SDK version, so the interface signature must match exactly.
  */
 interface IPlugin {
