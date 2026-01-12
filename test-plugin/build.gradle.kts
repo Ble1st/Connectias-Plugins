@@ -63,4 +63,11 @@ dependencies {
     
     // Timber Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
+    
+    // Coroutines for async HTTP requests
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.core)
+    
+    // OkHttp for HTTP requests
+    implementation(libs.okhttp)
 }

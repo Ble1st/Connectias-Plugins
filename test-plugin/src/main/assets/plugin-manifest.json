@@ -9,7 +9,7 @@
   "minApiLevel": 33,
   "maxApiLevel": 36,
   "minAppVersion": "1.0.0",
-  "permissions": [],
+  "permissions": ["android.permission.INTERNET"],
   "nativeLibraries": [],
   "dependencies": []
 }

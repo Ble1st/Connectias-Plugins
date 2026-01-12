@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
@@ -22,6 +23,13 @@ import com.ble1st.connectias.plugin.sdk.PluginCategory
 import com.ble1st.connectias.plugin.sdk.PluginContext
 import com.ble1st.connectias.plugin.sdk.PluginMetadata
 import timber.log.Timber
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 
 /**
  * Test-Plugin für das Connectias Plugin-System
@@ -35,6 +43,22 @@ class TestPlugin : Fragment(), IPlugin {
     private var pluginContext: PluginContext? = null
     private var clickCount by mutableStateOf(0)
     private var isPluginEnabled by mutableStateOf(false)
+    
+    // HTTP request state
+    private var urlInput by mutableStateOf("https://example.com")
+    private var httpResult by mutableStateOf<String?>(null)
+    private var isLoading by mutableStateOf(false)
+    private var httpError by mutableStateOf<String?>(null)
+    
+    // HTTP client for curl-like requests
+    private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+    
+    // Coroutine scope for async operations
+    private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     
     // IPlugin implementation
     override fun onLoad(context: PluginContext): Boolean {
@@ -81,7 +105,7 @@ class TestPlugin : Fragment(), IPlugin {
             nativeLibraries = emptyList(),
             fragmentClassName = "com.ble1st.connectias.testplugin.TestPlugin",
             description = "Ein Test-Plugin für das Connectias Plugin-System mit Compose UI",
-            permissions = emptyList(),
+            permissions = listOf("android.permission.INTERNET"),
             category = PluginCategory.UTILITY,
             dependencies = emptyList()
         )
@@ -147,9 +171,84 @@ class TestPlugin : Fragment(), IPlugin {
                         onArithmeticCrash = {
                             pluginContext?.logWarning("TestPlugin: ArithmeticException crash triggered")
                             val result = 10 / 0 // Division by zero
-                        }
+                        },
+                        urlInput = urlInput,
+                        onUrlInputChange = { urlInput = it },
+                        onCurlClick = { performHttpRequest() },
+                        httpResult = httpResult,
+                        isLoading = isLoading,
+                        httpError = httpError
                     )
                 }
+            }
+        }
+    }
+    
+    /**
+     * Performs HTTP GET request (curl-like functionality)
+     */
+    private fun performHttpRequest() {
+        if (urlInput.isBlank()) {
+            httpError = "URL darf nicht leer sein"
+            httpResult = null
+            pluginContext?.logWarning("TestPlugin: HTTP request failed - empty URL")
+            return
+        }
+        
+        // Validate URL format
+        val url = try {
+            if (!urlInput.startsWith("http://") && !urlInput.startsWith("https://")) {
+                "https://$urlInput"
+            } else {
+                urlInput
+            }
+        } catch (e: Exception) {
+            httpError = "Ungültige URL: ${e.message}"
+            httpResult = null
+            pluginContext?.logError("TestPlugin: Invalid URL format", e)
+            return
+        }
+        
+        isLoading = true
+        httpError = null
+        httpResult = null
+        pluginContext?.logInfo("TestPlugin: Starting HTTP request to $url")
+        
+        coroutineScope.launch {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .get()
+                    .build()
+                
+                val response = with(kotlinx.coroutines.Dispatchers.IO) {
+                    httpClient.newCall(request).execute()
+                }
+                
+                val responseBody = response.body?.string() ?: ""
+                val statusCode = response.code
+                val statusMessage = response.message
+                val headers = response.headers.toString()
+                
+                val result = buildString {
+                    appendLine("Status: $statusCode $statusMessage")
+                    appendLine("\nHeaders:")
+                    appendLine(headers)
+                    appendLine("\nBody:")
+                    appendLine(responseBody)
+                }
+                
+                httpResult = result
+                httpError = null
+                pluginContext?.logInfo("TestPlugin: HTTP request successful - Status: $statusCode")
+                
+            } catch (e: Exception) {
+                val errorMessage = "Fehler: ${e.message ?: e.javaClass.simpleName}"
+                httpError = errorMessage
+                httpResult = null
+                pluginContext?.logError("TestPlugin: HTTP request failed", e)
+            } finally {
+                isLoading = false
             }
         }
     }
@@ -204,7 +303,13 @@ fun TestPluginScreen(
     onStackOverflowCrash: () -> Unit,
     onIndexOutOfBoundsCrash: () -> Unit,
     onClassCastCrash: () -> Unit,
-    onArithmeticCrash: () -> Unit
+    onArithmeticCrash: () -> Unit,
+    urlInput: String,
+    onUrlInputChange: (String) -> Unit,
+    onCurlClick: () -> Unit,
+    httpResult: String?,
+    isLoading: Boolean,
+    httpError: String?
 ) {
     Scaffold(
         topBar = {
@@ -476,6 +581,134 @@ fun TestPluginScreen(
                 }
             }
 
+            // HTTP Request Card (Curl-like)
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "HTTP Request (Curl)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    OutlinedTextField(
+                        value = urlInput,
+                        onValueChange = onUrlInputChange,
+                        label = { Text("URL") },
+                        placeholder = { Text("https://example.com") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading,
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = null
+                            )
+                        }
+                    )
+                    
+                    Button(
+                        onClick = onCurlClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && urlInput.isNotBlank()
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Lädt...")
+                        } else {
+                            Icon(Icons.Default.Send, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Anfrage senden")
+                        }
+                    }
+                    
+                    // Error display
+                    httpError?.let { error ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Error,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Result display
+                    httpResult?.let { result ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Antwort",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                
+                                // Scrollable result text
+                                val scrollState = rememberScrollState()
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 300.dp),
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.surface
+                                ) {
+                                    Text(
+                                        text = result,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier
+                                            .padding(8.dp)
+                                            .verticalScroll(scrollState),
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Features Card
             Card(
                 modifier = Modifier.fillMaxWidth()
@@ -497,6 +730,7 @@ fun TestPluginScreen(
                     FeatureItem("✅ Timber Logging")
                     FeatureItem("✅ Database Logging")
                     FeatureItem("✅ Standalone APK")
+                    FeatureItem("✅ HTTP Requests (Curl)")
                 }
             }
         }
