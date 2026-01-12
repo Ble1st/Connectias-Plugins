@@ -109,6 +109,44 @@ class TestPlugin : Fragment(), IPlugin {
                         onResetClick = { 
                             pluginContext?.logInfo("Counter reset from $clickCount to 0")
                             clickCount = 0 
+                        },
+                        onCrashClick = {
+                            pluginContext?.logWarning("TestPlugin: RuntimeException crash triggered")
+                            throw RuntimeException("TestPlugin intentional crash - testing plugin isolation")
+                        },
+                        onNullPointerCrash = {
+                            pluginContext?.logWarning("TestPlugin: NullPointerException crash triggered")
+                            val nullObject: String? = null
+                            nullObject!!.length // Force NPE
+                        },
+                        onOutOfMemoryCrash = {
+                            pluginContext?.logWarning("TestPlugin: OutOfMemoryError crash triggered")
+                            val list = mutableListOf<ByteArray>()
+                            while (true) {
+                                list.add(ByteArray(10 * 1024 * 1024)) // Allocate 10MB chunks
+                            }
+                        },
+                        onIllegalStateCrash = {
+                            pluginContext?.logWarning("TestPlugin: IllegalStateException crash triggered")
+                            throw IllegalStateException("TestPlugin: Invalid state - testing isolation")
+                        },
+                        onStackOverflowCrash = {
+                            pluginContext?.logWarning("TestPlugin: StackOverflowError crash triggered")
+                            crashWithStackOverflow()
+                        },
+                        onIndexOutOfBoundsCrash = {
+                            pluginContext?.logWarning("TestPlugin: IndexOutOfBoundsException crash triggered")
+                            val array = arrayOf(1, 2, 3)
+                            val value = array[10] // Access invalid index
+                        },
+                        onClassCastCrash = {
+                            pluginContext?.logWarning("TestPlugin: ClassCastException crash triggered")
+                            val obj: Any = "This is a string"
+                            val number = obj as Int // Force ClassCastException
+                        },
+                        onArithmeticCrash = {
+                            pluginContext?.logWarning("TestPlugin: ArithmeticException crash triggered")
+                            val result = 10 / 0 // Division by zero
                         }
                     )
                 }
@@ -141,6 +179,15 @@ class TestPlugin : Fragment(), IPlugin {
         // IPlugin.onResume() is called automatically via default implementation
         pluginContext?.logDebug("TestPlugin: onResume called")
     }
+    
+    // Helper function for StackOverflowError
+    private fun crashWithStackOverflow(depth: Int = 0) {
+        if (depth > 10000) {
+            // This should never be reached, but prevents infinite recursion in some cases
+            return
+        }
+        crashWithStackOverflow(depth + 1)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,7 +196,15 @@ fun TestPluginScreen(
     clickCount: Int,
     isPluginEnabled: Boolean,
     onIncrementClick: () -> Unit,
-    onResetClick: () -> Unit
+    onResetClick: () -> Unit,
+    onCrashClick: () -> Unit,
+    onNullPointerCrash: () -> Unit,
+    onOutOfMemoryCrash: () -> Unit,
+    onIllegalStateCrash: () -> Unit,
+    onStackOverflowCrash: () -> Unit,
+    onIndexOutOfBoundsCrash: () -> Unit,
+    onClassCastCrash: () -> Unit,
+    onArithmeticCrash: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -283,6 +338,139 @@ fun TestPluginScreen(
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Reset")
+                        }
+                    }
+                    
+                }
+            }
+
+            // Crash Tests Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Crash Tests (Isolation)",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    
+                    Text(
+                        text = "Teste die Isolation des Plugin-Systems",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Row 1: RuntimeException, NullPointerException
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onCrashClick,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("RuntimeException", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Button(
+                            onClick = onNullPointerCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("NullPointer", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    
+                    // Row 2: OutOfMemoryError, IllegalStateException
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onOutOfMemoryCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("OutOfMemory", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Button(
+                            onClick = onIllegalStateCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("IllegalState", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    
+                    // Row 3: StackOverflowError, IndexOutOfBoundsException
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onStackOverflowCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("StackOverflow", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Button(
+                            onClick = onIndexOutOfBoundsCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("IndexOutOfBounds", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    
+                    // Row 4: ClassCastException, ArithmeticException
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onClassCastCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("ClassCast", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Button(
+                            onClick = onArithmeticCrash,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("Arithmetic", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
