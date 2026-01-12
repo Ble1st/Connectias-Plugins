@@ -1,0 +1,72 @@
+name: Release Plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      tag:
+        description: 'Git tag for the release'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+      
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      
+      - name: Build ping-plugin Release APK
+        run: ./gradlew :ping-plugin:assembleRelease
+      
+      - name: Build test-plugin Release APK
+        run: ./gradlew :test-plugin:assembleRelease
+      
+      - name: Create release directory
+        run: mkdir -p release-artifacts
+      
+      - name: Copy APK files
+        run: |
+          cp ping-plugin/build/outputs/apk/release/ping-plugin-release-unsigned.apk release-artifacts/ping-plugin-${{ github.event.inputs.version }}.apk || \
+          cp ping-plugin/build/outputs/apk/release/ping-plugin-release.apk release-artifacts/ping-plugin-${{ github.event.inputs.version }}.apk
+          cp test-plugin/build/outputs/apk/release/test-plugin-release-unsigned.apk release-artifacts/test-plugin-${{ github.event.inputs.version }}.apk || \
+          cp test-plugin/build/outputs/apk/release/test-plugin-release.apk release-artifacts/test-plugin-${{ github.event.inputs.version }}.apk
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.tag }}
+          name: Release ${{ github.event.inputs.version }}
+          body: |
+            ## Release ${{ github.event.inputs.version }}
+            
+            ### Plugins
+            - **ping-plugin** - Version ${{ github.event.inputs.version }}
+            - **test-plugin** - Version ${{ github.event.inputs.version }}
+            
+            ### Artifacts
+            - `ping-plugin-${{ github.event.inputs.version }}.apk`
+            - `test-plugin-${{ github.event.inputs.version }}.apk`
+          files: |
+            release-artifacts/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
