@@ -13,12 +13,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.graphics.BitmapFactory
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.fragment.app.Fragment
 import com.ble1st.connectias.plugin.sdk.IPlugin
 import com.ble1st.connectias.plugin.sdk.PluginCategory
@@ -54,6 +59,11 @@ class TestPlugin : Fragment(), IPlugin {
     // Camera state
     private var cameraImageData by mutableStateOf<ByteArray?>(null)
     private var cameraError by mutableStateOf<String?>(null)
+    
+    // Camera Preview state
+    private var isPreviewActive by mutableStateOf(false)
+    private var previewInfo by mutableStateOf("")
+    private var previewError by mutableStateOf("")
     
     // Coroutine scope for async operations
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -178,7 +188,12 @@ class TestPlugin : Fragment(), IPlugin {
                         httpError = httpError,
                         cameraImageData = cameraImageData,
                         cameraError = cameraError,
-                        onCaptureImage = { captureImageViaBridge() }
+                        onCaptureImage = { captureImageViaBridge() },
+                        isPreviewActive = isPreviewActive,
+                        previewInfo = previewInfo,
+                        previewError = previewError,
+                        onStartPreview = { startCameraPreview() },
+                        onStopPreview = { stopCameraPreview() }
                     )
                 }
             }
@@ -250,6 +265,70 @@ class TestPlugin : Fragment(), IPlugin {
                 context.logError("TestPlugin: HTTP request failed", e)
             } finally {
                 isLoading = false
+            }
+        }
+    }
+    
+    /**
+     * Start camera preview via Hardware Bridge (v2.0)
+     */
+    private fun startCameraPreview() {
+        lifecycleScope.launch {
+            isPreviewActive = true
+            previewError = ""
+            previewInfo = ""
+            
+            val context = pluginContext
+            if (context == null) {
+                previewError = "Plugin context not available"
+                isPreviewActive = false
+                return@launch
+            }
+            
+            context.logInfo("TestPlugin: Starting camera preview via Hardware Bridge")
+            
+            val result = context.startCameraPreview()
+            
+            result.onSuccess { preview ->
+                previewInfo = buildString {
+                    appendLine("Preview Active")
+                    appendLine("Resolution: ${preview.width}x${preview.height}")
+                    appendLine("Format: ${preview.format}")
+                    appendLine("Frame Size: ${preview.frameSize} bytes")
+                    appendLine("Buffer Size: ${preview.bufferSize} bytes")
+                    appendLine("FD: ${preview.fileDescriptor}")
+                }
+                context.logInfo("TestPlugin: Camera preview started (${preview.width}x${preview.height})")
+            }.onFailure { error ->
+                previewError = error.message ?: "Unknown error"
+                isPreviewActive = false
+                context.logError("TestPlugin: Camera preview failed", error)
+            }
+        }
+    }
+    
+    /**
+     * Stop camera preview via Hardware Bridge (v2.0)
+     */
+    private fun stopCameraPreview() {
+        lifecycleScope.launch {
+            val context = pluginContext
+            if (context == null) {
+                previewError = "Plugin context not available"
+                return@launch
+            }
+            
+            context.logInfo("TestPlugin: Stopping camera preview")
+            
+            val result = context.stopCameraPreview()
+            
+            result.onSuccess {
+                isPreviewActive = false
+                previewInfo = ""
+                context.logInfo("TestPlugin: Camera preview stopped")
+            }.onFailure { error ->
+                previewError = error.message ?: "Unknown error"
+                context.logError("TestPlugin: Stop preview failed", error)
             }
         }
     }
@@ -347,7 +426,12 @@ fun TestPluginScreen(
     httpError: String?,
     cameraImageData: ByteArray?,
     cameraError: String?,
-    onCaptureImage: () -> Unit
+    onCaptureImage: () -> Unit,
+    isPreviewActive: Boolean,
+    previewInfo: String,
+    previewError: String,
+    onStartPreview: () -> Unit,
+    onStopPreview: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -768,12 +852,69 @@ fun TestPluginScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CameraAlt,
+                            imageVector = Icons.Default.PhotoCamera,
                             contentDescription = "Capture",
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Foto aufnehmen (Hardware Bridge)")
+                        Text("Capture Image via Bridge")
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Camera Preview Section
+                    Text(
+                        text = "Camera Preview (Live)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onStartPreview,
+                            enabled = !isPreviewActive,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Start Preview")
+                        }
+                        
+                        Button(
+                            onClick = onStopPreview,
+                            enabled = isPreviewActive,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("Stop Preview")
+                        }
+                    }
+                    
+                    if (previewInfo.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Text(
+                                text = previewInfo,
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                    
+                    if (previewError.isNotEmpty()) {
+                        Text(
+                            text = "Preview Error: $previewError",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     
                     // Camera result display
@@ -783,19 +924,44 @@ fun TestPluginScreen(
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = "Bild erfasst: ${cameraImageData.size} bytes",
-                                    style = MaterialTheme.typography.bodyMedium
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
+                                
+                                // Display captured image
+                                val bitmap = remember(cameraImageData) {
+                                    try {
+                                        BitmapFactory.decodeByteArray(cameraImageData, 0, cameraImageData.size)
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+                                }
+                                
+                                if (bitmap != null) {
+                                    androidx.compose.foundation.Image(
+                                        bitmap = bitmap.asImageBitmap(),
+                                        contentDescription = "Captured Image",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(200.dp),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                    Text(
+                                        text = "${bitmap.width}x${bitmap.height} px",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                } else {
+                                    Text(
+                                        text = "Fehler beim Dekodieren des Bildes",
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
