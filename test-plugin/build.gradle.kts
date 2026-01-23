@@ -31,6 +31,7 @@ android {
     }
     
     buildFeatures {
+        compose = true
         buildConfig = false
     }
 }
@@ -42,19 +43,36 @@ kotlin {
 }
 
 dependencies {
-    // Plugin SDK
-    implementation(project(":plugin-sdk-temp:connectias-plugin-sdk"))
-    
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.0")
     
-    // Coroutines
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.core)
+    // Compose BOM
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.activity:activity-compose:1.9.3")
     
     // AndroidX Core
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     
     // Timber Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
+    
+    // Coroutines for async HTTP requests
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.core)
+    
+    // OkHttp for HTTP requests
+    implementation(libs.okhttp)
+    
+    // CameraX for camera preview
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 }
