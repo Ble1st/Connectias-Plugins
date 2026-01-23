@@ -16,6 +16,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "Connectias-Plugins"
 
-include(":ping-plugin")
-include(":test-plugin")
-include(":network-info-plugin")
+include(":connectias-plugin-sdk")
+// Old plugins temporarily disabled (need Compose Compiler plugin fix)
+// include(":ping-plugin")
+// include(":test-plugin")
+// include(":network-info-plugin")
+include(":test2-plugin")
