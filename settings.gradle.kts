@@ -19,3 +19,4 @@ rootProject.name = "Connectias-Plugins"
 include(":ping-plugin")
 include(":test-plugin")
 include(":network-info-plugin")
+include(":plugin-sdk-temp:connectias-plugin-sdk")
