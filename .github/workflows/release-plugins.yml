@@ -37,22 +37,62 @@ jobs:
       
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      
-      - name: Build ping-plugin Release APK
-        run: ./gradlew :ping-plugin:assembleRelease
-      
-      - name: Build test-plugin Release APK
-        run: ./gradlew :test-plugin:assembleRelease
+
+      - name: Resolve plugin modules from settings.gradle.kts
+        id: plugins
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Collect all included modules from settings.gradle.kts and filter to "plugin modules".
+          # We treat everything except the SDK module as a buildable plugin module.
+          mapfile -t MODULES < <(
+            sed -n 's/^[[:space:]]*include(\":\([^\"[:space:]]\+\)\".*$/\1/p' settings.gradle.kts \
+              | sed 's/[[:space:]]//g' \
+              | grep -v '^connectias-plugin-sdk$' \
+              | sort -u
+          )
+
+          if [ ${#MODULES[@]} -eq 0 ]; then
+            echo "❌ No plugin modules found in settings.gradle.kts"
+            exit 1
+          fi
+
+          echo "✅ Plugins to build: ${MODULES[*]}"
+          # Multiline output
+          {
+            echo "plugins<<'EOF'"
+            printf "%s\n" "${MODULES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build all plugins (assembleRelease)
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r plugin; do
+            [ -z "$plugin" ] && continue
+            echo "🔨 Building :${plugin}:assembleRelease"
+            ./gradlew ":${plugin}:assembleRelease" --no-daemon
+          done <<< "${{ steps.plugins.outputs.plugins }}"
       
       - name: Create release directory
         run: mkdir -p release-artifacts
       
       - name: Copy APK files
+        shell: bash
         run: |
-          cp ping-plugin/build/outputs/apk/release/ping-plugin-release-unsigned.apk release-artifacts/ping-plugin-${{ github.event.inputs.version }}.apk || \
-          cp ping-plugin/build/outputs/apk/release/ping-plugin-release.apk release-artifacts/ping-plugin-${{ github.event.inputs.version }}.apk
-          cp test-plugin/build/outputs/apk/release/test-plugin-release-unsigned.apk release-artifacts/test-plugin-${{ github.event.inputs.version }}.apk || \
-          cp test-plugin/build/outputs/apk/release/test-plugin-release.apk release-artifacts/test-plugin-${{ github.event.inputs.version }}.apk
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          while IFS= read -r plugin; do
+            [ -z "$plugin" ] && continue
+            APK_PATH="$(find "${plugin}/build/outputs/apk/release" -name "*.apk" -type f | head -1 || true)"
+            if [ -z "$APK_PATH" ]; then
+              echo "❌ APK not found for ${plugin}"
+              exit 1
+            fi
+            cp "$APK_PATH" "release-artifacts/${plugin}-${VERSION}.apk"
+            echo "✅ Copied ${APK_PATH} -> release-artifacts/${plugin}-${VERSION}.apk"
+          done <<< "${{ steps.plugins.outputs.plugins }}"
       
       - name: Create Git Tag
         run: |
@@ -74,12 +114,10 @@ jobs:
             ## Release ${{ github.event.inputs.version }}
             
             ### Plugins
-            - **ping-plugin** - Version ${{ github.event.inputs.version }}
-            - **test-plugin** - Version ${{ github.event.inputs.version }}
+            Built from modules included in `settings.gradle.kts`.
             
             ### Artifacts
-            - `ping-plugin-${{ github.event.inputs.version }}.apk`
-            - `test-plugin-${{ github.event.inputs.version }}.apk`
+            See attached APKs.
           files: |
             release-artifacts/*.apk
           draft: false
