@@ -70,11 +70,8 @@ jobs:
             echo "Force build all plugins enabled"
             CHANGED_PLUGINS=("${PLUGINS[@]}")
             echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
-            python3 - <<'PY' >> "$GITHUB_OUTPUT" < <(printf "%s\n" "${CHANGED_PLUGINS[@]}")
-            import sys, json
-            arr = [line.strip() for line in sys.stdin if line.strip()]
-            print(f"plugins-json={json.dumps(arr)}")
-            PY
+            PLUGINS_JSON=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${CHANGED_PLUGINS[@]}")
+            echo "plugins-json=${PLUGINS_JSON}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
@@ -133,11 +130,8 @@ jobs:
           else
             echo "Changed plugins: ${CHANGED_PLUGINS[*]}"
             echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
-            python3 - <<'PY' >> "$GITHUB_OUTPUT" < <(printf "%s\n" "${CHANGED_PLUGINS[@]}")
-            import sys, json
-            arr = [line.strip() for line in sys.stdin if line.strip()]
-            print(f"plugins-json={json.dumps(arr)}")
-            PY
+            PLUGINS_JSON=$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${CHANGED_PLUGINS[@]}")
+            echo "plugins-json=${PLUGINS_JSON}" >> "$GITHUB_OUTPUT"
           fi
       
       - name: Show changed plugins
