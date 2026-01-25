@@ -78,3 +78,4 @@ parcelable MotionEventParcel {
      */
     int flags;
 }
+

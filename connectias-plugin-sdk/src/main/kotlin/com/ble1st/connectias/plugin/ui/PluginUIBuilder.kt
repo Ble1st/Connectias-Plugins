@@ -40,7 +40,7 @@ import android.os.Bundle
  */
 class PluginUIBuilder(private val screenId: String) {
 
-    private val components = mutableListOf<UIComponentData>()
+    internal val components = mutableListOf<UIComponentParcel>()
     private var titleText: String = ""
     private val screenData = Bundle()
 
@@ -88,12 +88,12 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = id,
-                type = ComponentType.BUTTON.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                this.id = id
+                type = ComponentType.BUTTON.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
@@ -124,12 +124,12 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = id,
-                type = ComponentType.TEXT_FIELD.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                this.id = id
+                type = ComponentType.TEXT_FIELD.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
@@ -146,12 +146,12 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = "text_${components.size}",
-                type = ComponentType.TEXT_VIEW.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                id = "text_${components.size}"
+                type = ComponentType.TEXT_VIEW.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
@@ -179,50 +179,39 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = id,
-                type = ComponentType.LIST.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                this.id = id
+                type = ComponentType.LIST.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
     /**
-     * Adds an image component from URL.
+     * Adds an image component.
      *
      * @param id Unique component ID
      * @param url Image URL or resource identifier
      * @param contentDescription Accessibility description
-     * @param width Optional image width
-     * @param height Optional image height
      */
     fun image(
         id: String,
-        url: String = "",
-        contentDescription: String = "",
-        width: Int? = null,
-        height: Int? = null,
-        base64Data: String? = null
+        url: String,
+        contentDescription: String = ""
     ) {
         val properties = Bundle().apply {
-            if (base64Data != null) {
-                putString("base64Data", base64Data)
-            } else {
-                putString("url", url)
-            }
+            putString("url", url)
             putString("contentDescription", contentDescription)
-            width?.let { putInt("width", it) }
-            height?.let { putInt("height", it) }
         }
 
         components.add(
-            UIComponentData(
-                id = id,
-                type = ComponentType.IMAGE.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                this.id = id
+                type = ComponentType.IMAGE.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
@@ -247,12 +236,12 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = id,
-                type = ComponentType.CHECKBOX.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                this.id = id
+                type = ComponentType.CHECKBOX.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
@@ -266,12 +255,12 @@ class PluginUIBuilder(private val screenId: String) {
         columnBuilder.builder()
 
         components.add(
-            UIComponentData(
-                id = "column_${components.size}",
-                type = ComponentType.COLUMN.name,
-                properties = Bundle(),
-                children = columnBuilder.components
-            )
+            UIComponentParcel().apply {
+                id = "column_${components.size}"
+                type = ComponentType.COLUMN.name
+                properties = Bundle()
+                children = columnBuilder.components.toTypedArray()
+            }
         )
     }
 
@@ -285,12 +274,12 @@ class PluginUIBuilder(private val screenId: String) {
         rowBuilder.builder()
 
         components.add(
-            UIComponentData(
-                id = "row_${components.size}",
-                type = ComponentType.ROW.name,
-                properties = Bundle(),
-                children = rowBuilder.components
-            )
+            UIComponentParcel().apply {
+                id = "row_${components.size}"
+                type = ComponentType.ROW.name
+                properties = Bundle()
+                children = rowBuilder.components.toTypedArray()
+            }
         )
     }
 
@@ -305,58 +294,30 @@ class PluginUIBuilder(private val screenId: String) {
         }
 
         components.add(
-            UIComponentData(
-                id = "spacer_${components.size}",
-                type = ComponentType.SPACER.name,
-                properties = properties,
-                children = emptyList()
-            )
+            UIComponentParcel().apply {
+                id = "spacer_${components.size}"
+                type = ComponentType.SPACER.name
+                this.properties = properties
+                children = emptyArray()
+            }
         )
     }
 
     /**
-     * Builds the final UIStateParcel object for IPC.
+     * Builds the final UIStateParcel object.
      *
      * This is called internally by buildPluginUI() helper function.
-     * Converts SDK-side data classes to AIDL-compatible Parcels.
      */
-    internal fun build(): UIStateData {
-        return UIStateData(
-            screenId = screenId,
-            title = titleText,
-            data = screenData,
-            components = components,
+    internal fun build(): UIStateParcel {
+        return UIStateParcel().apply {
+            this.screenId = this@PluginUIBuilder.screenId
+            title = titleText
+            data = screenData
+            components = this@PluginUIBuilder.components.toTypedArray()
             timestamp = System.currentTimeMillis()
-        )
+        }
     }
 }
-
-/**
- * Data class representing UI state (SDK-side).
- *
- * This is the internal representation used by PluginUIBuilder.
- * It is automatically converted to UIStateParcel for IPC via toParcel() extension.
- *
- * Use buildPluginUI() to create UIStateParcel directly for Three-Process Architecture.
- */
-data class UIStateData(
-    val screenId: String,
-    val title: String,
-    val data: Bundle,
-    val components: List<UIComponentData>,
-    val timestamp: Long
-)
-
-/**
- * Data class representing a UI component (SDK-side).
- * Will be converted to UIComponentParcel for IPC.
- */
-data class UIComponentData(
-    val id: String,
-    val type: String,
-    val properties: Bundle,
-    val children: List<UIComponentData>
-)
 
 /**
  * Component types supported by the UI builder.
@@ -377,19 +338,19 @@ enum class ComponentType {
  * Button style variants.
  */
 enum class ButtonVariant {
-    PRIMARY,    // Filled button
-    SECONDARY,  // Outlined button
-    TEXT        // Text-only button
+    PRIMARY, // Filled button
+    SECONDARY, // Outlined button
+    TEXT // Text-only button
 }
 
 /**
  * Text style variants.
  */
 enum class TextStyle {
-    HEADLINE,   // Large, bold text
-    TITLE,      // Medium, semi-bold text
-    BODY,       // Normal text
-    CAPTION     // Small text
+    HEADLINE, // Large, bold text
+    TITLE, // Medium, semi-bold text
+    BODY, // Normal text
+    CAPTION // Small text
 }
 
 /**
@@ -405,8 +366,6 @@ data class ListItem(
 /**
  * Helper function for building plugin UI with DSL.
  *
- * Returns UIStateData which will be converted to UIStateParcel at the IPC boundary.
- *
  * Example:
  * ```
  * val uiState = buildPluginUI("main_screen") {
@@ -414,9 +373,9 @@ data class ListItem(
  *     text("Hello World!", style = TextStyle.HEADLINE)
  *     button(id = "btn1", text = "Click Me")
  * }
- * // uiState is UIStateData, conversion to Parcel happens automatically
  * ```
  */
-fun buildPluginUI(screenId: String, builder: PluginUIBuilder.() -> Unit): UIStateData {
+fun buildPluginUI(screenId: String, builder: PluginUIBuilder.() -> Unit): UIStateParcel {
     return PluginUIBuilder(screenId).apply(builder).build()
 }
+

@@ -1,17 +1,16 @@
 package com.ble1st.connectias.test2plugin
 
 import android.util.Base64
-import com.ble1st.connectias.plugin.IPlugin
-import com.ble1st.connectias.plugin.PluginCategory
-import com.ble1st.connectias.plugin.PluginContext
-import com.ble1st.connectias.plugin.PluginMetadata
-import com.ble1st.connectias.plugin.ui.IPluginUIController
-import com.ble1st.connectias.plugin.ui.UIStateData
-import com.ble1st.connectias.plugin.ui.UserAction
-import com.ble1st.connectias.plugin.ui.buildPluginUI
-import com.ble1st.connectias.plugin.ui.toParcel
+import com.ble1st.connectias.plugin.sdk.IPlugin
+import com.ble1st.connectias.plugin.sdk.PluginCategory
+import com.ble1st.connectias.plugin.sdk.PluginContext
+import com.ble1st.connectias.plugin.sdk.PluginMetadata
+import com.ble1st.connectias.plugin.sdk.PluginUIController
 import com.ble1st.connectias.plugin.ui.ButtonVariant
 import com.ble1st.connectias.plugin.ui.TextStyle
+import com.ble1st.connectias.plugin.ui.UIStateParcel
+import com.ble1st.connectias.plugin.ui.UserActionParcel
+import com.ble1st.connectias.plugin.ui.buildPluginUI
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,7 +31,7 @@ import timber.log.Timber
 class Test2Plugin : IPlugin {
 
     private var pluginContext: PluginContext? = null
-    private var uiController: IPluginUIController? = null
+    private var uiController: PluginUIController? = null
 
     // Plugin state
     private var isEnabled = false
@@ -48,7 +47,7 @@ class Test2Plugin : IPlugin {
         Timber.i("[TEST2_PLUGIN] onLoad called - Three-Process UI Architecture")
         this.pluginContext = context
 
-        // Get UI Controller for Three-Process Architecture
+        // Get UI Controller for Three-Process Architecture (SDK wrapper)
         try {
             uiController = context.getUIController()
             if (uiController != null) {
@@ -123,9 +122,9 @@ class Test2Plugin : IPlugin {
      * THREE-PROCESS UI: Render UI state using PluginUIBuilder DSL
      *
      * This method is called by the UI Process when it needs to render the UI.
-     * We return a declarative UI description (UIStateData), not a Fragment!
+     * We return a declarative UI description (UIStateParcel), not a Fragment!
      */
-    override fun onRenderUI(screenId: String): UIStateData? {
+    override fun onRenderUI(screenId: String): UIStateParcel? {
         Timber.d("[TEST2_PLUGIN] Rendering UI for screen: $screenId")
 
         return when (screenId) {
@@ -137,7 +136,7 @@ class Test2Plugin : IPlugin {
     /**
      * Renders the main screen with camera functionality
      */
-    private fun renderMainScreen(): UIStateData {
+    private fun renderMainScreen(): UIStateParcel {
         return buildPluginUI("main") {
             title("Test2 Plugin - Camera Demo")
 
@@ -206,13 +205,12 @@ class Test2Plugin : IPlugin {
                     spacer(height = 16)
                     text("✅ Bild erfolgreich aufgenommen!", style = TextStyle.TITLE)
 
-                    // Display image using base64
+                    // Display image as a data-URI in the IMAGE.url field.
+                    // The UI process renderer supports extracting Base64 from "url" (data:image/...;base64,...).
                     image(
                         id = "captured_image",
-                        base64Data = base64Image,
-                        contentDescription = "Aufgenommenes Bild",
-                        width = 300,
-                        height = 300
+                        url = "data:image/jpeg;base64,$base64Image",
+                        contentDescription = "Aufgenommenes Bild"
                     )
 
                     spacer(height = 8)
@@ -239,7 +237,7 @@ class Test2Plugin : IPlugin {
      * User actions are sent from the UI Process via IPC when users interact
      * with the UI components (buttons, text fields, etc.)
      */
-    override fun onUserAction(action: UserAction) {
+    override fun onUserAction(action: UserActionParcel) {
         Timber.d("[TEST2_PLUGIN] User action: ${action.actionType} on ${action.targetId}")
 
         when (action.targetId) {
@@ -335,10 +333,10 @@ class Test2Plugin : IPlugin {
 
         try {
             // Render current state
-            val uiState = onRenderUI("main")
+            val uiState = onRenderUI("main") ?: return
 
-            // Convert to Parcel and send to UI Process via IPC
-            controller.updateUIState(getMetadata().pluginId, uiState?.toParcel())
+            // Send to UI Process via IPC (through SDK wrapper)
+            controller.updateUIState(uiState)
 
             Timber.d("[TEST2_PLUGIN] UI state updated successfully")
         } catch (e: Exception) {

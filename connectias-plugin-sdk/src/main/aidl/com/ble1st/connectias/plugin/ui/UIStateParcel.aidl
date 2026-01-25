@@ -16,3 +16,4 @@ parcelable UIStateParcel {
     UIComponentParcel[] components;
     long timestamp;
 }
+

@@ -18,3 +18,4 @@ parcelable UserActionParcel {
     android.os.Bundle data;    // Action-specific data
     long timestamp;            // Timestamp of action
 }
+

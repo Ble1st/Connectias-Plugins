@@ -3,13 +3,14 @@
   "pluginName": "Ping Plugin",
   "version": "1.0.0",
   "author": "Connectias Team",
-  "description": "Ein Netzwerk-Ping-Tool für das Connectias Plugin-System mit ICMP-Ping-Funktionalität",
+  "description": "Ping-Plugin für Three-Process UI (HTTP-Ping via Hardware Bridge, State-basiert)",
   "category": "NETWORK",
-  "fragmentClassName": "com.ble1st.connectias.pingplugin.PingPlugin",
+  "fragmentClassName": "",
+  "pluginClassName": "com.ble1st.connectias.pingplugin.PingPlugin",
   "minApiLevel": 33,
   "maxApiLevel": 36,
   "minAppVersion": "1.0.0",
-  "permissions": [],
+  "permissions": ["android.permission.INTERNET"],
   "nativeLibraries": [],
   "dependencies": []
 }

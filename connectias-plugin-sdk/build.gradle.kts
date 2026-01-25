@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.parcelize)
 }
 
 android {
@@ -9,16 +10,16 @@ android {
 
     defaultConfig {
         minSdk = 33
-    }
-
-    buildFeatures {
-        aidl = true
-        buildConfig = false
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        aidl = true
     }
 }
 
@@ -29,6 +30,6 @@ kotlin {
 }
 
 dependencies {
-    // Pure library - no Android dependencies except for Context interface
-    // Plugins will use Android framework at runtime
+    api(libs.kotlinx.coroutines.core)
 }
+

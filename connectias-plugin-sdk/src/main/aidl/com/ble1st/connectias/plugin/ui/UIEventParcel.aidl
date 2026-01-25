@@ -17,3 +17,4 @@ parcelable UIEventParcel {
     android.os.Bundle payload; // Event-specific payload
     long timestamp;            // Timestamp of event
 }
+

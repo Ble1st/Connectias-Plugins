@@ -19,3 +19,4 @@ parcelable UIComponentParcel {
     android.os.Bundle properties;  // Component-specific properties
     UIComponentParcel[] children;  // Nested components (for layout containers)
 }
+

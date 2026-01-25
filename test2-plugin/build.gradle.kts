@@ -46,7 +46,9 @@ kotlin {
 
 dependencies {
     // Connectias Plugin SDK (Three-Process UI Architecture support)
-    implementation(project(":connectias-plugin-sdk"))
+    // IMPORTANT: compileOnly to avoid bundling SDK classes into the plugin APK.
+    // Bundling the SDK would create duplicate classes across ClassLoaders and break runtime casts.
+    compileOnly(project(":connectias-plugin-sdk"))
 
     // Kotlin standard library
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.0")

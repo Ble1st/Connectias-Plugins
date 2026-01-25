@@ -3,16 +3,14 @@
   "pluginName": "Network Info Plugin",
   "version": "1.0.0",
   "author": "Connectias Team",
-  "description": "Ein Netzwerk-Informations-Plugin für das Connectias Plugin-System mit Anzeige von IP-Adressen, WiFi-Informationen und Netzwerkdetails",
+  "description": "Network-Info für Three-Process UI (Public IP/Reachability via Hardware Bridge, State-basiert)",
   "category": "NETWORK",
-  "fragmentClassName": "com.ble1st.connectias.networkinfoplugin.NetworkInfoPlugin",
+  "fragmentClassName": "",
+  "pluginClassName": "com.ble1st.connectias.networkinfoplugin.NetworkInfoPlugin",
   "minApiLevel": 33,
   "maxApiLevel": 36,
   "minAppVersion": "1.0.0",
-  "permissions": [
-    "android.permission.ACCESS_NETWORK_STATE",
-    "android.permission.ACCESS_WIFI_STATE"
-  ],
+  "permissions": ["android.permission.INTERNET"],
   "nativeLibraries": [],
   "dependencies": []
 }

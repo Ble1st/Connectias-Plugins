@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -32,7 +31,9 @@ android {
     }
     
     buildFeatures {
-        compose = true
+        // Three-Process UI Architecture: No Compose needed in plugin!
+        // UI is rendered in separate UI Process
+        compose = false
         buildConfig = false
     }
 }
@@ -44,26 +45,20 @@ kotlin {
 }
 
 dependencies {
+    // Connectias Plugin SDK (Three-Process UI Architecture support)
+    // IMPORTANT: compileOnly to avoid bundling SDK classes into the plugin APK.
+    // Bundling the SDK would create duplicate classes across ClassLoaders and break runtime casts.
+    compileOnly(project(":connectias-plugin-sdk"))
+
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.0")
     
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
-    
-    // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    
-    // AndroidX Core
+
+    // AndroidX Core (minimal)
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.fragment:fragment-ktx:1.8.5")
     
     // Timber Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
