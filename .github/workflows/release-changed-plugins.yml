@@ -12,6 +12,10 @@ on:
         required: false
         type: boolean
         default: false
+  push:
+    branches:
+      - main
+  pull_request:
 
 permissions:
   contents: write
@@ -22,12 +26,25 @@ jobs:
     outputs:
       changed-plugins: ${{ steps.changes.outputs.changed-plugins }}
       plugins-json: ${{ steps.changes.outputs.plugins-json }}
+      version: ${{ steps.version.outputs.version }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history needed for change detection
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            # For push/PR builds we don't create releases/tags, but we still need a version label.
+            echo "version=dev-${{ github.run_number }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
       
       - name: Detect changed plugins (from settings.gradle.kts)
         id: changes
@@ -49,16 +66,15 @@ jobs:
           CHANGED_PLUGINS=()
           
           # If force_all is true, mark all as changed
-          if [ "${{ github.event.inputs.force_all }}" == "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_all }}" == "true" ]; then
             echo "Force build all plugins enabled"
             CHANGED_PLUGINS=("${PLUGINS[@]}")
             echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
-            python3 - <<'PY' >> "$GITHUB_OUTPUT"
-import json, os
-plugins = os.environ.get("CHANGED_PLUGINS", "")
-arr = [p for p in plugins.split(",") if p]
-print(f"plugins-json={json.dumps(arr)}")
-PY
+            python3 - <<'PY' >> "$GITHUB_OUTPUT" < <(printf "%s\n" "${CHANGED_PLUGINS[@]}")
+            import sys, json
+            arr = [line.strip() for line in sys.stdin if line.strip()]
+            print(f"plugins-json={json.dumps(arr)}")
+            PY
             exit 0
           fi
           
@@ -117,19 +133,17 @@ PY
           else
             echo "Changed plugins: ${CHANGED_PLUGINS[*]}"
             echo "changed-plugins=$(IFS=','; echo "${CHANGED_PLUGINS[*]}")" >> $GITHUB_OUTPUT
-            python3 - <<'PY' >> "$GITHUB_OUTPUT"
-import json, os
-plugins = os.environ.get("CHANGED_PLUGINS", "")
-arr = [p for p in plugins.split(",") if p]
-print(f"plugins-json={json.dumps(arr)}")
-PY
+            python3 - <<'PY' >> "$GITHUB_OUTPUT" < <(printf "%s\n" "${CHANGED_PLUGINS[@]}")
+            import sys, json
+            arr = [line.strip() for line in sys.stdin if line.strip()]
+            print(f"plugins-json={json.dumps(arr)}")
+            PY
           fi
-        env:
-          CHANGED_PLUGINS: ${{ steps.changes.outputs.changed-plugins }}
       
       - name: Show changed plugins
         run: |
           echo "Changed plugins: ${{ steps.changes.outputs.changed-plugins }}"
+          echo "Version label: ${{ steps.version.outputs.version }}"
 
   build-changed-plugins:
     needs: detect-changes
@@ -208,10 +222,11 @@ PY
       - name: Create release tag name
         id: tag
         run: |
-          TAG_NAME="v${{ github.event.inputs.version }}-${{ matrix.plugin }}"
+          TAG_NAME="v${{ needs.detect-changes.outputs.version }}-${{ matrix.plugin }}"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Create Git Tag
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -219,21 +234,22 @@ PY
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "Tag $TAG_NAME already exists, skipping tag creation"
           else
-            git tag -a "$TAG_NAME" -m "Release ${{ matrix.plugin }} v${{ github.event.inputs.version }}"
+            git tag -a "$TAG_NAME" -m "Release ${{ matrix.plugin }} v${{ needs.detect-changes.outputs.version }}"
             git push origin "$TAG_NAME"
           fi
 
       - name: Create GitHub Release
+        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag_name }}
-          name: ${{ matrix.plugin }} v${{ github.event.inputs.version }}
+          name: ${{ matrix.plugin }} v${{ needs.detect-changes.outputs.version }}
           body: |
-            # ${{ matrix.plugin }} v${{ github.event.inputs.version }}
+            # ${{ matrix.plugin }} v${{ needs.detect-changes.outputs.version }}
 
             ## Plugin Information
             - **Plugin ID:** ${{ steps.plugin-id.outputs.plugin_id }}
-            - **Version:** ${{ github.event.inputs.version }}
+            - **Version:** ${{ needs.detect-changes.outputs.version }}
 
             ## Artifacts
             - APK: `${{ steps.find-apk.outputs.apk_name }}`
@@ -245,6 +261,16 @@ PY
           draft: false
           prerelease: false
 
+      - name: Upload build artifacts (push/PR)
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.plugin }}-${{ needs.detect-changes.outputs.version }}
+          path: |
+            ${{ steps.find-apk.outputs.apk_path }}
+            plugin-manifest.json
+            sha256sum.txt
+
   summary:
     needs: [detect-changes, build-changed-plugins]
     if: always() && needs.detect-changes.outputs.changed-plugins != ''
@@ -254,7 +280,7 @@ PY
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.detect-changes.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Changed Plugins:" >> $GITHUB_STEP_SUMMARY
           echo "${{ needs.detect-changes.outputs.changed-plugins }}" >> $GITHUB_STEP_SUMMARY
