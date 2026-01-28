@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.nio.charset.StandardCharsets
 
 /**
  * Test2 Plugin - Three-Process UI Architecture Demo
@@ -39,6 +40,12 @@ class Test2Plugin : IPlugin {
     private var capturedImageBase64: String? = null
     private var cameraStatus = "Bereit"
     private var lastError: String? = null
+    private var safStatus = "Bereit"
+    private var safError: String? = null
+    private var importedFileName: String? = null
+    private var importedFileContent: String? = null
+    private var importStatus = "Bereit"
+    private var importError: String? = null
 
     // Coroutine scope for async operations
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -220,6 +227,71 @@ class Test2Plugin : IPlugin {
 
             spacer(height = 24)
 
+            // SAF File Saving Section
+            column {
+                text("💾 Datei speichern (SAF)", style = TextStyle.TITLE)
+                text("Status: $safStatus", style = TextStyle.BODY)
+
+                button(
+                    id = "btn_save_file",
+                    text = "💾 Datei speichern (SAF)",
+                    variant = ButtonVariant.PRIMARY,
+                    enabled = isEnabled
+                )
+
+                // Show SAF error if any
+                safError?.let { error ->
+                    spacer(height = 8)
+                    text("❌ Fehler: $error", style = TextStyle.CAPTION)
+                }
+            }
+
+            spacer(height = 24)
+
+            // SAF File Import Section
+            column {
+                text("📂 Datei importieren (SAF)", style = TextStyle.TITLE)
+                text("Status: $importStatus", style = TextStyle.BODY)
+
+                button(
+                    id = "btn_import_file",
+                    text = "📂 Datei importieren (SAF)",
+                    variant = ButtonVariant.PRIMARY,
+                    enabled = isEnabled
+                )
+
+                // Show import error if any
+                importError?.let { error ->
+                    spacer(height = 8)
+                    text("❌ Fehler: $error", style = TextStyle.CAPTION)
+                }
+
+                // Show imported file info
+                importedFileName?.let { fileName ->
+                    spacer(height = 16)
+                    text("✅ Datei erfolgreich importiert!", style = TextStyle.TITLE)
+                    text("Dateiname: $fileName", style = TextStyle.BODY)
+                    
+                    importedFileContent?.let { content ->
+                        spacer(height = 8)
+                        text("Inhalt (${content.length} Zeichen):", style = TextStyle.BODY)
+                        spacer(height = 4)
+                        // Display content in a scrollable text area
+                        // Note: The UI system may need to handle long text differently
+                        text(
+                            text = if (content.length > 500) {
+                                "${content.take(500)}... (${content.length - 500} weitere Zeichen)"
+                            } else {
+                                content
+                            },
+                            style = TextStyle.CAPTION
+                        )
+                    }
+                }
+            }
+
+            spacer(height = 24)
+
             // Architecture Info
             column {
                 text("🏗️ Architektur-Info", style = TextStyle.TITLE)
@@ -255,6 +327,14 @@ class Test2Plugin : IPlugin {
 
             "btn_capture" -> {
                 captureImage()
+            }
+
+            "btn_save_file" -> {
+                saveFileViaSAF()
+            }
+
+            "btn_import_file" -> {
+                importFileViaSAF()
             }
 
             else -> {
@@ -315,6 +395,133 @@ class Test2Plugin : IPlugin {
                 capturedImageBase64 = null
 
                 context.logError("Test2Plugin: Image capture exception", e)
+
+                // Update UI to show error
+                updateUI()
+            }
+        }
+    }
+
+    /**
+     * Saves a file via Storage Access Framework (SAF)
+     */
+    private fun saveFileViaSAF() {
+        val context = pluginContext ?: run {
+            safError = "Plugin context not available"
+            safStatus = "❌ Fehler"
+            updateUI()
+            return
+        }
+
+        safStatus = "📝 Datei speichern..."
+        safError = null
+        updateUI()
+
+        context.logInfo("Test2Plugin: Starting SAF file save")
+
+        coroutineScope.launch {
+            try {
+                val result = context.createFileViaSAF(
+                    fileName = "test.txt",
+                    mimeType = "text/plain",
+                    content = "I am Testing".toByteArray()
+                )
+
+                result.onSuccess { uri ->
+                    safStatus = "✅ Datei erfolgreich gespeichert: $uri"
+                    safError = null
+
+                    context.logInfo("Test2Plugin: File saved successfully via SAF: $uri")
+
+                    // Update UI to show success
+                    updateUI()
+
+                }.onFailure { error ->
+                    safStatus = "❌ Speichern fehlgeschlagen"
+                    safError = error.message ?: "Unbekannter Fehler"
+
+                    context.logError("Test2Plugin: SAF file save failed", error)
+
+                    // Update UI to show error
+                    updateUI()
+                }
+
+            } catch (e: Exception) {
+                safStatus = "❌ Speichern fehlgeschlagen"
+                safError = e.message ?: "Exception: ${e.javaClass.simpleName}"
+
+                context.logError("Test2Plugin: SAF file save exception", e)
+
+                // Update UI to show error
+                updateUI()
+            }
+        }
+    }
+
+    /**
+     * Imports a file via Storage Access Framework (SAF)
+     */
+    private fun importFileViaSAF() {
+        val context = pluginContext ?: run {
+            importError = "Plugin context not available"
+            importStatus = "❌ Fehler"
+            updateUI()
+            return
+        }
+
+        importStatus = "📂 Datei importieren..."
+        importError = null
+        importedFileName = null
+        importedFileContent = null
+        updateUI()
+
+        context.logInfo("Test2Plugin: Starting SAF file import")
+
+        coroutineScope.launch {
+            try {
+                val result = context.openFileViaSAF(mimeType = "text/plain")
+
+                result.onSuccess { (uri, content, fileName) ->
+                    // File name is now provided directly from Main Process (no ContentResolver needed)
+                    // This avoids SecurityException in isolated processes
+
+                    // Convert content to String (assuming UTF-8 encoding)
+                    val contentString = try {
+                        String(content, StandardCharsets.UTF_8)
+                    } catch (e: Exception) {
+                        Timber.w(e, "[TEST2_PLUGIN] Failed to decode content as UTF-8")
+                        "Fehler beim Dekodieren des Dateiinhalts"
+                    }
+
+                    importedFileName = fileName
+                    importedFileContent = contentString
+                    importStatus = "✅ Datei erfolgreich importiert"
+                    importError = null
+
+                    context.logInfo("Test2Plugin: File imported successfully via SAF: $fileName (${content.size} bytes)")
+
+                    // Update UI to show imported file
+                    updateUI()
+
+                }.onFailure { error ->
+                    importStatus = "❌ Import fehlgeschlagen"
+                    importError = error.message ?: "Unbekannter Fehler"
+                    importedFileName = null
+                    importedFileContent = null
+
+                    context.logError("Test2Plugin: SAF file import failed", error)
+
+                    // Update UI to show error
+                    updateUI()
+                }
+
+            } catch (e: Exception) {
+                importStatus = "❌ Import fehlgeschlagen"
+                importError = e.message ?: "Exception: ${e.javaClass.simpleName}"
+                importedFileName = null
+                importedFileContent = null
+
+                context.logError("Test2Plugin: SAF file import exception", e)
 
                 // Update UI to show error
                 updateUI()

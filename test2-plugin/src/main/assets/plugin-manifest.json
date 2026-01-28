@@ -3,14 +3,14 @@
   "pluginName": "Test2 Plugin (Three-Process UI)",
   "version": "1.0.0",
   "author": "Connectias Team",
-  "description": "Demo-Plugin für Three-Process UI Architecture mit Kamera-Funktionalität",
+  "description": "Demo-Plugin für Three-Process UI Architecture mit Kamera-Funktionalität und SAF-Dateispeicherung",
   "category": "UTILITY",
   "fragmentClassName": "",
   "pluginClassName": "com.ble1st.connectias.test2plugin.Test2Plugin",
   "minApiLevel": 33,
   "maxApiLevel": 36,
   "minAppVersion": "1.0.0",
-  "permissions": ["android.permission.CAMERA"],
+  "permissions": ["android.permission.CAMERA", "FILE_WRITE", "FILE_READ"],
   "nativeLibraries": [],
   "dependencies": []
 }
